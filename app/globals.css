@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}/* app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 폰트 변수 정의 (next/font에서 사용) */
+/* layout.tsx에서 Inter 폰트를 로드하고 CSS 변수로 `--font-inter`를 설정할 예정입니다. */
+:root {
+  --font-inter: 'Inter', sans-serif; /* Fallback 폰트 추가 */
+
+  /* 라이트 모드 색상 변수 */
+  --background: #ffffff; /* 하얀색 배경 */
+  --foreground: #171717; /* 어두운 글자색 */
+
+  /* 기본 스크롤바 트랙 색상 (라이트 모드) */
+  --scrollbar-track: #f1f5f9; /* slate-100 */
+  /* 기본 스크롤바 썸 색상 (라이트 모드) */
+  --scrollbar-thumb: #cbd5e1; /* slate-300 */
+  /* 기본 스크롤바 썸 호버 색상 (라이트 모드) */
+  --scrollbar-thumb-hover: #94a3b8; /* slate-400 */
+}
+
+/* 다크 모드 색상 변수 (html.dark 클래스에 적용) */
+/* layout.tsx의 body 클래스가 아닌 html 태그에 dark 클래스를 토글하는 방식으로 Header.tsx에서 구현했으므로, */
+/* 여기에 html.dark를 사용합니다. */
+html.dark { /* <--- 이 부분 변경: @media 대신 html.dark 클래스 사용 */
+  --background: #0a0a0a; /* 어두운 배경 */
+  --foreground: #ededed; /* 밝은 글자색 */
+
+  /* 다크 모드 스크롤바 색상 */
+  --scrollbar-track: #1e293b; /* slate-800 */
+  --scrollbar-thumb: #475569; /* slate-600 */
+  --scrollbar-thumb-hover: #64748b; /* slate-500 */
+}
+
+body {
+  /* `inter.className`이 직접 주입되므로 `font-family`는 Tailwind config에서 설정한 변수로 관리됩니다. */
+  /* 여기서는 var(--foreground), var(--background)를 사용하여 전역 색상 적용 */
+  color: var(--foreground);
+  background: var(--background);
+  /* font-family는 next/font에서 자동 주입되므로 여기서 직접 지정할 필요는 없습니다. */
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+/* CSS 변수를 사용하여 다크 모드 스크롤바도 지원 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
