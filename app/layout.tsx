@@ -1,13 +1,13 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google'; // Inter 폰트 임포트
+import { Inter } from 'next/font/google'; 
 import './globals.css';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 
 const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-inter', // <--- 이 부분 추가: CSS 변수로 폰트 설정
+  variable: '--font-inter', 
 });
 
 export const metadata: Metadata = {
