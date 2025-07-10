@@ -4,7 +4,7 @@ import { FieldValue } from 'firebase/firestore';
 import { PlacedObject } from '@/utils/map_assets';
 import { TeamMember } from '@/types/team';
 
-export interface UserGameProgress {
+export interface UserGameProgress { // export 키워드 확인!
   userId: string;
   currentStep: number;
   character: {
@@ -32,29 +32,28 @@ export interface UserGameProgress {
   
   resources: {
     money: number;
-    energy: number;
+    energy: number; // 전체 에너지 자원 (추후 사용)
   };
   team: TeamMember[];
 
-  // 🔥🔥🔥 게임 개발 시뮬레이션 관련 필드 추가 🔥🔥🔥
   gameDevProgress: {
-    currentWeek: number; // 현재 시뮬레이션 주차
+    currentWeek: number;
     coding: {
-      percentage: number; // 코딩 진행도 (%)
-      bugs: number; // 발견된 버그 수 (나중에 활용)
+      percentage: number;
+      bugs: number;
     };
     art: {
-      percentage: number; // 아트 진행도 (%)
+      percentage: number;
     };
     design: {
-      percentage: number; // 디자인/레벨 진행도 (%)
+      percentage: number;
     };
     marketing: {
-      percentage: number; // 마케팅 진행도 (%)
+      percentage: number;
     };
-    quality: number; // 최종 게임 품질 점수 (초기에는 팀원 스킬 합산 등으로 계산)
-    isReleased: boolean; // 게임 출시 여부
-    releaseRevenue?: number; // 출시 후 수익 (나중에 추가)
+    quality: number; // 최종 게임 품질 점수
+    isReleased: boolean;
+    releaseRevenue?: number;
   };
 
   createdAt: FieldValue;

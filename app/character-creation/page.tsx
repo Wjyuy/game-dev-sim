@@ -1,78 +1,153 @@
 // app/character-creation/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // useEffect, useCallback 추가
 import { useRouter } from 'next/navigation';
-import { db } from '@/firebase/clientConfig'; // Firebase 설정 파일 임포트
-// 🔥 getDoc을 추가로 임포트합니다.
-import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'; // getDoc 추가
-import Button from '@/components/ui/Button'; // 기존 Button 컴포넌트
-import Card from '@/components/ui/Card'; // 기존 Card 컴포넌트
+import { db, auth } from '@/firebase/clientConfig'; // 🔥 auth 임포트
+import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { User } from 'firebase/auth'; // 🔥 Firebase User 타입 임포트
+import Button from '@/components/ui/Button';
+import Card from '@/components/ui/Card';
+
 
 type CharacterType = 'coder' | 'artist' | 'planner';
 
 const avatarImages = [
   '/avatars/avatar-01.png',
   '/avatars/avatar-02.png',
-  // ... 8개 아바타 경로
+  '/avatars/avatar-03.png',
+  '/avatars/avatar-04.png',
+  '/avatars/avatar-05.png',
+  '/avatars/avatar-06.png',
+  '/avatars/avatar-07.png',
+  '/avatars/avatar-08.png',
 ];
 
 export default function CharacterCreationPage() {
   const [selectedType, setSelectedType] = useState<CharacterType | null>(null);
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null); // ⭐ userId 상태 추가
+  const [loading, setLoading] = useState(true); // ⭐ 로딩 상태 추가
+  const [error, setError] = useState<string | null>(null); // ⭐ 에러 상태 추가
   const router = useRouter();
-  const userId = "test_user_id"; // TODO: Firebase Auth에서 실제 userId 가져오기
+
+  // ⭐ Firebase Auth 상태 변경 리스너 ⭐
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        // 사용자가 로그인한 경우
+        setUserId(currentUser.uid);
+        setLoading(false); // 로딩 완료
+      } else {
+        // 사용자가 로그인되지 않은 경우
+        setUserId(null);
+        setLoading(false); // 로딩 완료
+        // 로그인 페이지 또는 다른 시작 페이지로 리다이렉트
+        // router.replace('/login'); // TODO: 실제 로그인 페이지 경로로 변경
+        setError("로그인이 필요합니다."); // 임시 에러 메시지
+      }
+    });
+
+    // 컴포넌트 언마운트 시 리스너 해제
+    return () => unsubscribe();
+  }, [router]);
+
 
   const handleNext = async () => {
-    if (selectedType && selectedAvatar && userId) {
-      try {
-        const userDocRef = doc(db, 'users', userId);
-        // 🔥 사용자 문서의 현재 스냅샷을 가져옵니다.
-        const docSnap = await getDoc(userDocRef);
-
-        if (!docSnap.exists()) {
-          // 🔥 문서가 존재하지 않으면, 초기 데이터와 함께 새로운 문서를 생성합니다.
-          await setDoc(userDocRef, {
-            userId: userId, // 사용자 ID도 문서 내에 저장
-            currentStep: 1,
-            character: {
-              type: selectedType,
-              avatarId: selectedAvatar,
-            },
-            totalScore: 0, // 초기 총점
-            overallProgress: 0, // 초기 전체 진행도
-            resources: {
-              money: 1000, // 초기 자금 부여
-              energy: 100, // 필요하다면 초기 에너지 등도
-            },
-            team: [], // 초기 팀원 없음 (빈 배열)
-            createdAt: serverTimestamp(), // 최초 생성 시 타임스탬프
-            updatedAt: serverTimestamp(),
-          });
-          console.log("새로운 사용자 문서 초기화 및 캐릭터 정보 저장 완료.");
-        } else {
-          // 🔥 문서가 이미 존재하면, 캐릭터 정보만 업데이트합니다.
-          // merge: true를 사용하여 기존 필드는 유지하고 character 필드만 업데이트합니다.
-          await setDoc(userDocRef, {
-            currentStep: 1,
-            character: {
-              type: selectedType,
-              avatarId: selectedAvatar,
-            },
-            updatedAt: serverTimestamp(),
-          }, { merge: true });
-          console.log("기존 사용자 문서에 캐릭터 정보 업데이트 완료.");
-        }
-        
-        router.push('/genre-selection');
-      } catch (error) {
-        console.error("캐릭터 정보 저장 실패:", error);
-        alert("캐릭터 정보를 저장하는 데 실패했습니다. 다시 시도해주세요.");
-      }
-    } else {
+    if (!userId) {
+      alert("로그인 정보가 없습니다. 다시 로그인 해주세요.");
+      // router.push('/login'); // TODO: 실제 로그인 페이지 경로로 변경
+      return;
+    }
+    if (!selectedType || !selectedAvatar) {
       alert("개발자 타입과 아바타를 모두 선택해주세요!");
+      return;
+    }
+
+    setLoading(true); // 데이터 저장 시작 시 로딩
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      const docSnap = await getDoc(userDocRef);
+
+      if (!docSnap.exists()) {
+        // 문서가 존재하지 않으면, 초기 데이터와 함께 새로운 문서를 생성합니다.
+        await setDoc(userDocRef, {
+          userId: userId,
+          currentStep: 1,
+          character: {
+            type: selectedType,
+            avatarId: selectedAvatar,
+          },
+          totalScore: 0,
+          overallProgress: 0,
+          resources: {
+            money: 10000, // 초기 자금 부여 (팀빌딩 페이지와 일관성 유지)
+            energy: 100,
+          },
+          team: [],
+          gameDevProgress: { // gameDevProgress 초기화 추가
+            currentWeek: 0,
+            coding: { percentage: 0, bugs: 0 },
+            art: { percentage: 0 },
+            design: { percentage: 0 },
+            marketing: { percentage: 0 },
+            quality: 0,
+            isReleased: false,
+            releaseRevenue: 0,
+          },
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        console.log("새로운 사용자 문서 초기화 및 캐릭터 정보 저장 완료.");
+      } else {
+        // 문서가 이미 존재하면, 캐릭터 정보만 업데이트합니다.
+        await setDoc(userDocRef, {
+          currentStep: 1,
+          character: {
+            type: selectedType,
+            avatarId: selectedAvatar,
+          },
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+        console.log("기존 사용자 문서에 캐릭터 정보 업데이트 완료.");
+      }
+      
+      router.push('/genre-selection');
+    } catch (err) { // error 변수명을 err로 변경하여 충돌 방지
+      console.error("캐릭터 정보 저장 실패:", err);
+      alert("캐릭터 정보를 저장하는 데 실패했습니다. 다시 시도해주세요.");
+      setError("캐릭터 정보 저장 실패.");
+    } finally {
+      setLoading(false); // 로딩 해제
     }
   };
+
+  // ⭐ 로딩 및 에러 상태 처리 ⭐
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen text-xl dark:text-white">
+        로그인 상태 확인 중...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-red-500 text-xl text-center">
+        오류: {error}
+        {/* 로그인 페이지로 이동 버튼 등 추가 가능 */}
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-gray-500 text-xl dark:text-gray-400">
+        로그인이 필요합니다.
+        {/* <Button onClick={() => router.push('/login')} className="mt-4">로그인 페이지로</Button> */}
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -110,15 +185,14 @@ export default function CharacterCreationPage() {
             `}
             onClick={() => setSelectedAvatar(src)}
           >
-            {/* Next/image 사용 시 public 경로에서 바로 접근 가능 */}
             <img src={src} alt={`Avatar ${index + 1}`} className="w-full h-auto object-contain p-1" />
           </div>
         ))}
       </div>
 
       <div className="text-center">
-        <Button onClick={handleNext} disabled={!selectedType || !selectedAvatar}>
-          다음 단계로
+        <Button onClick={handleNext} disabled={!selectedType || !selectedAvatar || loading}>
+          {loading ? '저장 중...' : '다음 단계로'}
         </Button>
       </div>
     </div>

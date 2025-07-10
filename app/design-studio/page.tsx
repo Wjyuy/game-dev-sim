@@ -3,10 +3,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { db } from '@/firebase/clientConfig';
-import { doc, getDoc, updateDoc, serverTimestamp, FieldValue } from 'firebase/firestore'; // FieldValue 추가
+import { db, auth } from '@/firebase/clientConfig'; // auth 임포트 추가
+import { doc, getDoc, updateDoc, serverTimestamp, FieldValue } from 'firebase/firestore';
+import { User } from 'firebase/auth'; // Firebase User 타입 임포트
 
-// UI 컴포넌트 임포트 (경로 확인, 만약 ui 폴더 아래 없다면 조정)
+// UI 컴포넌트 임포트
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import ProgressBar from '@/components/ui/ProgressBar'; 
@@ -18,9 +19,9 @@ import {
   DesignObject,
   designObjects,
   PlacedObject
-} from '@/utils/map_assets'; // 경로에 맞게 조정하세요!
+} from '@/utils/map_assets';
 
-// 색상 팔레트 데이터 (design-studio/page.tsx에 직접 정의 또는 별도 파일로 분리 가능)
+// 색상 팔레트 데이터
 const colorPalettes = [
   { id: 'forest', name: 'Forest', colors: ['#A0B099', '#789066', '#546045'] },
   { id: 'desert', name: 'Desert', colors: ['#D2B48C', '#F4A460', '#B8860B'] },
@@ -38,37 +39,69 @@ export default function DesignStudioPage() {
   const [overallProgress, setOverallProgress] = useState(0);
 
   const router = useRouter();
-  const userId = "test_user_id"; // TODO: 실제 userId 가져오기 (Firebase Auth 연동 시 변경)
+  const [userId, setUserId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); // 초기 로딩 상태
+  const [error, setError] = useState<string | null>(null); // 에러 상태
 
   // Canvas 관련 Ref
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const objImagesRef = useRef<Record<string, HTMLImageElement>>({});
 
-  // Firebase에서 초기 사용자 데이터 (코딩 점수 등) 불러오기
+  // Firebase Auth 상태 변경 리스너
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (!userId) return; // userId가 없으면 로드하지 않음 (로그인 전)
-      try {
-        const userDocRef = doc(db, 'users', userId);
-        const docSnap = await getDoc(userDocRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setCodingScore(data.codingProgress?.score || 0);
-          setTotalScore(data.totalScore || 0);
-          setOverallProgress(data.overallProgress || 0);
-          setSelectedPalette(data.designProgress?.selectedPalette || null);
-          setSelectedBackgroundId(data.designProgress?.selectedBackground || mapBackgrounds[0].id);
-          // Firestore에서 가져온 placedObjects 배열의 타입을 명시적으로 지정
-          setPlacedObjects((data.designProgress?.placedObjects || []) as PlacedObject[]);
-          setDesignScore(data.designProgress?.score || 0);
-        }
-      } catch (error) {
-        console.error("사용자 데이터 로드 실패:", error);
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        setUserId(currentUser.uid);
+        setLoading(false); // 로딩 완료
+        loadDesignProgress(currentUser.uid);
+      } else {
+        setUserId(null);
+        setLoading(false); // 로딩 완료
+        setError("로그인이 필요합니다.");
+        router.replace('/login');
       }
-    };
-    fetchUserData();
-  }, [userId]);
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  // 사용자 디자인 진행 상황 로드 함수
+  const loadDesignProgress = useCallback(async (uid: string) => {
+    try {
+      const userDocRef = doc(db, 'users', uid);
+      const docSnap = await getDoc(userDocRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCodingScore(data.codingProgress?.score || 0);
+        setTotalScore(data.totalScore || 0);
+        setOverallProgress(data.overallProgress || 0);
+        setSelectedPalette(data.designProgress?.selectedPalette || null);
+        setSelectedBackgroundId(data.designProgress?.selectedBackground || mapBackgrounds[0].id);
+        setPlacedObjects((data.designProgress?.placedObjects || []) as PlacedObject[]);
+        setDesignScore(data.designProgress?.score || 0);
+
+        if (data.designProgress?.completed) {
+          alert('디자인 단계가 이미 완료되었습니다! 다음 단계로 이동합니다.');
+          router.push('/team-building');
+        }
+
+      } else {
+        setError("사용자 데이터를 찾을 수 없습니다. 캐릭터 생성부터 다시 시작해주세요.");
+        router.push('/character-creation');
+      }
+    } catch (err) {
+      console.error("사용자 데이터 로드 실패:", err);
+      setError("사용자 데이터를 불러오는 데 실패했습니다.");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    if (userId) {
+      loadDesignProgress(userId);
+    }
+  }, [userId, loadDesignProgress]);
 
 
   // 이미지 로드 및 캔버스 그리기 함수
@@ -87,12 +120,12 @@ export default function DesignStudioPage() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. 배경 이미지 그리기 (이 부분은 문제가 없을 것으로 예상)
+    // 1. 배경 이미지 그리기
     const currentBg = mapBackgrounds.find(bg => bg.id === selectedBackgroundId);
     if (currentBg) {
       if (!bgImageRef.current || bgImageRef.current.src !== window.location.origin + currentBg.src) {
         bgImageRef.current = new Image();
-        bgImageRef.current.src = currentBg.src; // public 경로 사용
+        bgImageRef.current.src = currentBg.src;
         bgImageRef.current.onload = () => {
           drawMap();
         };
@@ -105,40 +138,34 @@ export default function DesignStudioPage() {
     }
 
     // 2. 배치된 오브젝트 그리기
-    placedObjects.forEach(placedObj => { // placedObj로 이름 변경하여 혼동 방지
-        // 🔥🔥 핵심 변경: designObjects에서 원본 오브젝트 데이터 찾기 🔥🔥
+    placedObjects.forEach(placedObj => {
         const originalObj = designObjects.find(obj => obj.id === placedObj.id);
         if (!originalObj) {
             console.warn(`Original object data not found for ID: ${placedObj.id}`);
-            return; // 원본 데이터를 찾을 수 없으면 그리지 않음
+            return;
         }
 
-        // 오브젝트 이미지 로드 (각 이미지 객체는 한 번만 생성 및 로드되도록 관리)
-        if (!objImagesRef.current[originalObj.id]) { // originalObj.id 사용
+        if (!objImagesRef.current[originalObj.id]) {
             const img = new Image();
-            img.src = originalObj.src; // originalObj.src 사용
+            img.src = originalObj.src;
             objImagesRef.current[originalObj.id] = img;
             img.onload = () => {
-                drawMap(); // 이미지가 로드되면 캔버스 다시 그리기
+                drawMap();
             };
         }
         const img = objImagesRef.current[originalObj.id];
 
         if (img && img.complete) {
-            // 이미지 로드 완료 시 그리기
-            ctx.drawImage(img, placedObj.x, placedObj.y, originalObj.width, originalObj.height); // originalObj.width/height 사용
+            ctx.drawImage(img, placedObj.x, placedObj.y, originalObj.width, originalObj.height);
         } else if (img && img.naturalWidth === 0 && img.naturalHeight === 0) {
-            // 이미지가 'broken' 상태일 경우 경고
             console.error(`Broken image detected for: ${originalObj.src}`);
         }
     });
 
-
-     // (옵션) 선택된 팔레트에 따른 시각적 효과 (예: 전체 맵에 필터 적용)
+    // (옵션) 선택된 팔레트에 따른 시각적 효과
     if (selectedPalette) {
       const palette = colorPalettes.find(p => p.id === selectedPalette);
       if (palette) {
-        // 예시: 캔버스 전체에 팔레트 색상으로 오버레이
         ctx.globalAlpha = 0.2;
         ctx.fillStyle = palette.colors[0];
         ctx.fillRect(0, 0, rect.width, rect.height);
@@ -150,20 +177,22 @@ export default function DesignStudioPage() {
 
   // 캔버스 그리기 함수를 의존성으로 추가하여 상태 변화 시 재렌더링
   useEffect(() => {
-    drawMap();
-  }, [drawMap]);
+    if (!loading && userId) {
+      drawMap();
+    }
+  }, [drawMap, loading, userId]);
 
   // 드래그 앤 드롭 로직
   const [draggedObjectId, setDraggedObjectId] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent<HTMLDivElement>, objectId: string) => {
     setDraggedObjectId(objectId);
-    e.dataTransfer.setData('text/plain', objectId); // 드래그된 오브젝트 ID 저장
-    e.dataTransfer.effectAllowed = 'copy'; // 복사 효과 (원래 위치에 남아있음)
+    e.dataTransfer.setData('text/plain', objectId);
+    e.dataTransfer.effectAllowed = 'copy';
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLCanvasElement>) => {
-    e.preventDefault(); // 드롭 허용
+    e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   };
 
@@ -179,18 +208,16 @@ export default function DesignStudioPage() {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       
-      // 캔버스 내에서의 정확한 드롭 좌표 계산 (DPI 고려)
       const x = (e.nativeEvent.offsetX / rect.width) * (canvas.width / dpr) - objectData.width / 2;
       const y = (e.nativeEvent.offsetY / rect.height) * (canvas.height / dpr) - objectData.height / 2;
 
       const newPlacedObject: PlacedObject = {
         ...objectData,
-        // 캔버스 경계를 넘지 않도록 제한
         x: Math.max(0, Math.min(x, (canvas.width / dpr) - objectData.width)),
         y: Math.max(0, Math.min(y, (canvas.height / dpr) - objectData.height)),
       };
       setPlacedObjects(prev => [...prev, newPlacedObject]);
-      setDraggedObjectId(null); // 드래그 상태 초기화
+      setDraggedObjectId(null);
     }
   };
 
@@ -201,7 +228,7 @@ export default function DesignStudioPage() {
     // 배경 점수
     const selectedBg = mapBackgrounds.find(bg => bg.id === selectedBackgroundId);
     if (selectedBg) {
-      score += (selectedBg.scoreMultiplier - 1) * 50; // 예: 1.1이면 5점 추가
+      score += (selectedBg.scoreMultiplier - 1) * 50;
     }
 
     // 오브젝트 점수
@@ -215,7 +242,7 @@ export default function DesignStudioPage() {
       score += 30; // 모든 종류의 오브젝트 배치 시 보너스
     }
 
-    return Math.max(0, Math.floor(score)); // 점수는 0 이상 정수
+    return Math.max(0, Math.floor(score));
   }, [selectedBackgroundId, placedObjects]);
 
   // 점수 및 진행도 업데이트 (디자인 점수 변경 시 총점 및 진행도 계산)
@@ -228,10 +255,10 @@ export default function DesignStudioPage() {
     const initialProgress = 25; // 캐릭터 생성 + 장르 선택 완료 시 25% 가정
 
     // 코딩 챌린지 완료 여부/점수에 따른 가중치 (예: 25% 할당)
+    // ⭐ 'stages' 대신 'maxCodingScore' 상수를 직접 사용 ⭐
     const codingProgressWeight = 25;
-    // (여기서는 codingScore만 불러와서, 실제 완료 여부는 고려하지 않고 점수만 반영)
-    // 실제로는 `codingProgress.completed` 여부에 따라 이 부분을 조절할 수 있습니다.
-    const codingProgressContribution = (codingScore / (5 * 10)) * codingProgressWeight; // 5단계 * 10점 만점 가정
+    const maxCodingScore = 50; // 코딩 챌린지 5단계 * 10점/단계 = 50점
+    const codingProgressContribution = (codingScore / maxCodingScore) * codingProgressWeight;
 
     // 디자인 스튜디오 완료 여부/점수에 따른 가중치 (예: 25% 할당)
     const designProgressWeight = 25;
@@ -249,15 +276,16 @@ export default function DesignStudioPage() {
 
 
   const handleDesignComplete = async () => {
+    if (!userId) {
+      alert("로그인 정보가 없습니다. 다시 로그인 해주세요.");
+      router.push('/login');
+      return;
+    }
     if (!selectedPalette || !selectedBackgroundId) {
       alert("색상 팔레트와 배경을 모두 선택해주세요!");
       return;
     }
 
-    // 최종 점수 및 진행도 계산 (useEffect에서 이미 계산됨)
-    // const finalDesignScore = calculateDesignScore(); // 이미 상태에 반영됨
-    // const finalTotalScore = codingScore + finalDesignScore; // 이미 상태에 반영됨
-    
     // Firebase에 진행 상황 업데이트
     try {
       const userDocRef = doc(db, 'users', userId);
@@ -275,11 +303,49 @@ export default function DesignStudioPage() {
       
       alert('디자인이 완료되었습니다! 다음 단계로 이동합니다.');
       router.push('/team-building'); // 다음 페이지로 이동
-    } catch (error) {
-      console.error("Firebase 업데이트 실패:", error);
+    } catch (err: any) { // err 타입 지정
+      console.error("Firebase 업데이트 실패:", err);
       alert("디자인 정보를 저장하는 데 실패했습니다. 다시 시도해주세요.");
+      setError("디자인 정보 저장 실패.");
     }
   };
+
+  // ⭐ 로딩 및 에러 상태 UI ⭐
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen text-xl dark:text-white">
+        로그인 상태 확인 및 데이터 불러오는 중...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-red-500 text-xl text-center">
+        오류: {error}
+        {error.includes("로그인이 필요합니다") && (
+          <Button onClick={() => router.push('/login')} className="mt-4">
+            로그인 페이지로
+          </Button>
+        )}
+        {error.includes("사용자 데이터를 찾을 수 없습니다") && (
+          <Button onClick={() => router.push('/character-creation')} className="mt-4">
+            새 게임 시작
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (!userId) { // userId가 없으면 로그인 유도 (로딩 후에도)
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-gray-500 text-xl dark:text-gray-400">
+        로그인이 필요합니다.
+        <Button onClick={() => router.push('/login')} className="mt-4">로그인 페이지로</Button>
+      </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -382,8 +448,8 @@ export default function DesignStudioPage() {
       </Card>
 
       <div className="text-center mt-8">
-        <Button onClick={handleDesignComplete} disabled={!selectedPalette || !selectedBackgroundId}>
-          디자인 완료!
+        <Button onClick={handleDesignComplete} disabled={!selectedPalette || !selectedBackgroundId || loading}>
+          {loading ? '저장 중...' : '디자인 완료!'}
         </Button>
       </div>
     </div>

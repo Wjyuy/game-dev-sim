@@ -1,10 +1,11 @@
-// app/genre-selection/page.tsx (간략화된 예시)
+// app/genre-selection/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react'; // useCallback 추가
 import { useRouter } from 'next/navigation';
-import { db } from '@/firebase/clientConfig';
+import { db, auth } from '@/firebase/clientConfig'; // 🔥 auth 임포트
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { User } from 'firebase/auth'; // 🔥 Firebase User 타입 임포트
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import { Bar } from 'react-chartjs-2';
@@ -32,8 +33,28 @@ const genreData = {
 
 export default function GenreSelectionPage() {
   const [selectedGenre, setSelectedGenre] = useState<GameGenre | null>(null);
+  const [userId, setUserId] = useState<string | null>(null); // ⭐ userId 상태 추가
+  const [loading, setLoading] = useState(true); // ⭐ 로딩 상태 추가
+  const [error, setError] = useState<string | null>(null); // ⭐ 에러 상태 추가
   const router = useRouter();
-  const userId = "test_user_id"; // TODO: 실제 userId 가져오기
+
+  // ⭐ Firebase Auth 상태 변경 리스너 ⭐
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        setUserId(currentUser.uid);
+        setLoading(false); // 로딩 완료
+      } else {
+        setUserId(null);
+        setLoading(false); // 로딩 완료
+        setError("로그인이 필요합니다."); // 임시 에러 메시지
+        // router.replace('/login'); // TODO: 실제 로그인 페이지 경로로 변경
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
 
   const chartData = {
     labels: ['예상 수익 (억)', '난이도 (1-10)', '예상 유저 (만)'],
@@ -86,27 +107,64 @@ export default function GenreSelectionPage() {
   };
 
   const handleNext = async () => {
-    if (selectedGenre && userId) {
-      try {
-        const userDocRef = doc(db, 'users', userId);
-        await updateDoc(userDocRef, {
-          currentStep: 2,
-          genre: {
-            selected: selectedGenre,
-            marketDataSnapshot: genreData[selectedGenre],
-          },
-          updatedAt: serverTimestamp(),
-        });
-        
-        router.push('/coding-challenge'); // 다음 페이지로 이동
-      } catch (error) {
-        console.error("장르 정보 저장 실패:", error);
-        alert("장르 정보를 저장하는 데 실패했습니다. 다시 시도해주세요.");
-      }
-    } else {
+    if (!userId) {
+      alert("로그인 정보가 없습니다. 다시 로그인 해주세요.");
+      // router.push('/login'); // TODO: 실제 로그인 페이지 경로로 변경
+      return;
+    }
+    if (!selectedGenre) {
       alert("장르를 선택해주세요!");
+      return;
+    }
+
+    setLoading(true); // 데이터 저장 시작 시 로딩
+    try {
+      const userDocRef = doc(db, 'users', userId);
+      await updateDoc(userDocRef, {
+        currentStep: 2,
+        genre: {
+          selected: selectedGenre,
+          marketDataSnapshot: genreData[selectedGenre],
+        },
+        updatedAt: serverTimestamp(),
+      });
+      
+      router.push('/coding-challenge'); // 다음 페이지로 이동
+    } catch (err: any) { // error 변수명을 err로 변경하여 충돌 방지
+      console.error("장르 정보 저장 실패:", err);
+      alert("장르 정보를 저장하는 데 실패했습니다. 다시 시도해주세요.");
+      setError("장르 정보 저장 실패.");
+    } finally {
+      setLoading(false); // 로딩 해제
     }
   };
+
+  // ⭐ 로딩 및 에러 상태 처리 ⭐
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen text-xl dark:text-white">
+        로그인 상태 확인 중...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-red-500 text-xl text-center">
+        오류: {error}
+        {/* 로그인 페이지로 이동 버튼 등 추가 가능 */}
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-gray-500 text-xl dark:text-gray-400">
+        로그인이 필요합니다.
+        {/* <Button onClick={() => router.push('/login')} className="mt-4">로그인 페이지로</Button> */}
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -135,8 +193,8 @@ export default function GenreSelectionPage() {
       </div>
 
       <div className="text-center">
-        <Button onClick={handleNext} disabled={!selectedGenre}>
-          다음 단계로
+        <Button onClick={handleNext} disabled={!selectedGenre || loading}>
+          {loading ? '저장 중...' : '다음 단계로'}
         </Button>
       </div>
     </div>
